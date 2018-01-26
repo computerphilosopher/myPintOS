@@ -29,6 +29,10 @@ static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
+static void wake_up_thread(int64_t waketick);
+
+static struct list block_list;
+static int64_t alarm_tick;
 
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
@@ -36,6 +40,8 @@ void timer_init (void)
 {
         pit_configure_channel (0, 2, TIMER_FREQ);
         intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+        list_init(&block_list);
+        alarm_tick=0;
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -85,12 +91,46 @@ int64_t timer_elapsed (int64_t then)
 void timer_sleep (int64_t ticks) 
 {
         int64_t start = timer_ticks ();
+        struct thread *t = thread_current();
+        enum intr_level old_level;
+
+        old_level= intr_disable();
+        t->wake_up_time=start+ticks;
+        //t->status = THREAD_BLOCKED;
+
+        list_push_back(&block_list, &t->elem);
+
+        thread_block();
+
+        intr_set_level(old_level);
+
+        wake_up_thread(start+ticks);
 
 
-        ASSERT (intr_get_level () == INTR_ON);
-        while (timer_elapsed (start) < ticks) 
-                thread_yield ();
 }
+
+static void wake_up_thread(int64_t waketick)
+{
+
+        struct list_elem *e= list_begin(&block_list);
+
+        while(!list_empty(&block_list))
+        {
+                e=list_front(&block_list);
+
+                struct thread *t= list_entry(e, struct thread, elem);
+
+                if(t->wake_up_time <= waketick){
+                        list_pop_front(&block_list);
+                        thread_unblock(t);
+                } 
+                else{
+                        break;
+                }
+
+        }
+}
+
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
    turned on. */
@@ -158,8 +198,11 @@ void timer_print_stats (void)
 /* Timer interrupt handler. */
 static void timer_interrupt (struct intr_frame *args UNUSED)
 {
+        //int64_t start = timer_ticks ();
         ticks++;
         thread_tick ();
+
+        //wake_up_thread(start+ticks);
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
