@@ -29,10 +29,10 @@ static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
-static void wake_up_thread(int64_t waketick);
+static void wake_up_thread(void);
 
 static struct list block_list;
-static int64_t alarm_tick;
+static int64_t start;
 
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
@@ -41,7 +41,7 @@ void timer_init (void)
         pit_configure_channel (0, 2, TIMER_FREQ);
         intr_register_ext (0x20, timer_interrupt, "8254 Timer");
         list_init(&block_list);
-        alarm_tick=0;
+        start=0;
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -104,28 +104,32 @@ void timer_sleep (int64_t ticks)
 
         intr_set_level(old_level);
 
-        wake_up_thread(start+ticks);
-
-
 }
 
-static void wake_up_thread(int64_t waketick)
+static void wake_up_thread()
 {
 
-        struct list_elem *e= list_begin(&block_list);
+        struct list_elem *e=list_begin(&block_list);
+        /*
 
-        while(!list_empty(&block_list))
+        if(e==list_tail(&block_list))
         {
-                e=list_front(&block_list);
+                return;
 
-                struct thread *t= list_entry(e, struct thread, elem);
+        }
+        */
 
-                if(t->wake_up_time <= waketick){
-                        list_pop_front(&block_list);
+        while(e!=list_end(&block_list) && e!=list_tail(&block_list))
+        {
+                struct thread *t=list_entry(e,struct thread, elem);
+
+                if(t->wake_up_time <= ticks){
+                        e=list_remove(e);
                         thread_unblock(t);
                 } 
+
                 else{
-                        break;
+                        e=list_next(e);
                 }
 
         }
@@ -202,7 +206,7 @@ static void timer_interrupt (struct intr_frame *args UNUSED)
         ticks++;
         thread_tick ();
 
-        //wake_up_thread(start+ticks);
+        wake_up_thread();
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
