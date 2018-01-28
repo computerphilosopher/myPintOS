@@ -71,6 +71,8 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+static bool less_prio(const struct list_elem *cur, const struct list_elem *prev, void *aux UNUSED);
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -234,6 +236,22 @@ void thread_block (void)
    be important: if the caller had disabled interrupts itself,
    it may expect that it can atomically unblock a thread and
    update other data. */
+
+/*less function for list_insert_ordered() */
+static bool less_prio(const struct list_elem *cur, const struct list_elem *prev, void *aux UNUSED)
+{
+        struct thread *cur_thread = list_entry(cur, struct thread, elem);
+        struct thread *prev_thread = list_entry(prev, struct thread, elem);
+        
+        if(cur_thread->priority > prev_thread->priority){
+                return true;
+        }
+        else{
+                return false;
+        }
+}
+
+
 void thread_unblock (struct thread *t) 
 {
         enum intr_level old_level;
@@ -242,7 +260,7 @@ void thread_unblock (struct thread *t)
 
         old_level = intr_disable ();
         ASSERT (t->status == THREAD_BLOCKED);
-        list_push_back (&ready_list, &t->elem);
+        list_insert_ordered(&ready_list, &t->elem, less_prio, NULL);
         t->status = THREAD_READY;
         intr_set_level (old_level);
 }
@@ -307,8 +325,11 @@ void thread_yield (void)
         ASSERT (!intr_context ());
 
         old_level = intr_disable ();
-        if (cur != idle_thread) 
-                list_push_back (&ready_list, &cur->elem);
+        if (cur != idle_thread)
+        {
+                list_insert_ordered(&ready_list, &cur->elem, less_prio, NULL);
+                /*list_push_back (&ready_list, &cur->elem);*/
+        }
         cur->status = THREAD_READY;
         schedule ();
         intr_set_level (old_level);
@@ -343,16 +364,15 @@ int thread_get_priority (void)
 }
 
 /* Sets the current thread's nice value to NICE. */
-void thread_set_nice (int nice UNUSED) 
+void thread_set_nice (int nice) 
 {
-        /* Not yet implemented. */
+        thread_current()->nice = nice;
 }
 
 /* Returns the current thread's nice value. */
 int thread_get_nice (void) 
 {
-        /* Not yet implemented. */
-        return 0;
+        return thread_current()->nice;
 }
 
 /* Returns 100 times the system load average. */
@@ -539,7 +559,7 @@ static void schedule (void)
         ASSERT (cur->status != THREAD_RUNNING);
         ASSERT (is_thread (next));
 
-        if (cur != next)
+        if (cur != next) //not idle
                 prev = switch_threads (cur, next);
         thread_schedule_tail (prev);
 }
