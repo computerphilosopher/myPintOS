@@ -11,6 +11,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/fixed_point.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -71,7 +72,8 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
-static bool less_prio(const struct list_elem *cur, const struct list_elem *prev, void *aux UNUSED);
+
+static bool need_yield(void);
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -164,6 +166,22 @@ void thread_print_stats (void)
    PRIORITY, but no actual priority scheduling is implemented.
    Priority scheduling is the goal of Problem 1-3. */
 
+static bool need_yield (){
+        
+        struct thread *new_thread = list_entry(list_front(&ready_list), struct thread, elem);
+
+        if(new_thread->priority > thread_current()->priority && 
+                        !list_empty(&ready_list)){
+                return true;
+
+        }
+
+        else{
+                return false;
+        }
+        
+}
+
 tid_t thread_create (const char *name, int priority,
                 thread_func *function, void *aux) 
 {
@@ -209,6 +227,10 @@ tid_t thread_create (const char *name, int priority,
 
         /* Add to run queue. */
         thread_unblock (t);
+        
+        if(need_yield()){
+                thread_yield();
+        }
 
         return tid;
 }
@@ -238,18 +260,26 @@ void thread_block (void)
    update other data. */
 
 /*less function for list_insert_ordered() */
-static bool less_prio(const struct list_elem *cur, const struct list_elem *prev, void *aux UNUSED)
+bool less_prio(const struct list_elem *cur, const struct list_elem *prev, void *aux UNUSED)
 {
         struct thread *cur_thread = list_entry(cur, struct thread, elem);
         struct thread *prev_thread = list_entry(prev, struct thread, elem);
-        
-        if(cur_thread->priority > prev_thread->priority){
+
+        if(cur_thread->priority > prev_thread->priority)
+        {
                 return true;
         }
-        else{
+        else if(cur_thread->priority < prev_thread->priority)
+        {
                 return false;
+
+        }
+
+        else{
+                return (cur_thread->wake_up_time <= prev_thread->priority);
         }
 }
+
 
 
 void thread_unblock (struct thread *t) 
@@ -262,7 +292,9 @@ void thread_unblock (struct thread *t)
         ASSERT (t->status == THREAD_BLOCKED);
         list_insert_ordered(&ready_list, &t->elem, less_prio, NULL);
         t->status = THREAD_READY;
+
         intr_set_level (old_level);
+
 }
 
 /* Returns the name of the running thread. */
@@ -328,7 +360,7 @@ void thread_yield (void)
         if (cur != idle_thread)
         {
                 list_insert_ordered(&ready_list, &cur->elem, less_prio, NULL);
-                /*list_push_back (&ready_list, &cur->elem);*/
+
         }
         cur->status = THREAD_READY;
         schedule ();
@@ -355,6 +387,11 @@ void thread_foreach (thread_action_func *func, void *aux)
 void thread_set_priority (int new_priority) 
 {
         thread_current ()->priority = new_priority;
+
+        if(need_yield()){
+                thread_yield();
+        }
+
 }
 
 /* Returns the current thread's priority. */
