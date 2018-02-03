@@ -32,7 +32,7 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
-static bool need_donate(struct semaphore *sema, struct lock *lock);
+static bool need_donate(struct lock *lock);
 
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
@@ -112,10 +112,27 @@ void sema_up (struct semaphore *sema)
         ASSERT (sema != NULL);
 
         old_level = intr_disable ();
+
+        bool need_yield=false;
+        
         if (!list_empty (&sema->waiters)) 
-                thread_unblock (list_entry (list_pop_front (&sema->waiters),
-                                        struct thread, elem));
+        {
+                struct thread *t = list_entry (list_pop_front (&sema->waiters),
+                                        struct thread, elem); 
+                thread_unblock (t);
+                
+                if(t->priority > thread_current()->priority){
+                        need_yield=true;
+                }
+
+        }
         sema->value++;
+
+
+        if(need_yield){
+                thread_yield();
+        }
+        
         intr_set_level (old_level);
 }
 
@@ -187,26 +204,29 @@ void lock_init (struct lock *lock)
    interrupts disabled, but interrupts will be turned back on if
    we need to sleep. */
 
-static bool need_donate(struct semaphore *sema, struct lock *lock)
+static bool need_donate(struct lock *lock)
 {
+        struct semaphore *sema = &lock->semaphore;
 
         if(lock->holder!=NULL)
         {
-
-
                 struct thread *waiter = list_entry(list_front(&sema->waiters), struct thread, elem);
 
 
-                if(waiter->priority > thread_get_priority() ){
+                if(waiter->priority > thread_get_priority())
+                {
                         return true;
                 }
 
-                else{
+                else
+                {
                         return false;
                 }
         }
 
-        return false;
+        else{
+                return false;
+        }
 }
 
 void lock_acquire (struct lock *lock)
@@ -332,9 +352,11 @@ void cond_signal (struct condition *cond, struct lock *lock UNUSED)
         ASSERT (!intr_context ());
         ASSERT (lock_held_by_current_thread (lock));
 
+
         if (!list_empty (&cond->waiters)) 
                 sema_up (&list_entry (list_pop_front (&cond->waiters),
                                         struct semaphore_elem, elem)->semaphore);
+
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by

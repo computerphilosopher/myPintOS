@@ -73,7 +73,6 @@ void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
 
-static bool need_yield(void);
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -166,20 +165,25 @@ void thread_print_stats (void)
    PRIORITY, but no actual priority scheduling is implemented.
    Priority scheduling is the goal of Problem 1-3. */
 
-static bool need_yield (){
-        
-        struct thread *new_thread = list_entry(list_front(&ready_list), struct thread, elem);
+bool need_yield (){
 
-        if(new_thread->priority > thread_current()->priority && 
-                        !list_empty(&ready_list)){
-                return true;
+        if(!list_empty(&ready_list)){
+
+                struct thread *new_thread = list_entry(list_front(&ready_list), struct thread, elem);
+
+                if(new_thread->priority > thread_current()->priority){
+                        return true;
+                }
+
+                else{
+                        return false;
+                }
 
         }
 
-        else{
+        else {
                 return false;
         }
-        
 }
 
 tid_t thread_create (const char *name, int priority,
@@ -227,7 +231,7 @@ tid_t thread_create (const char *name, int priority,
 
         /* Add to run queue. */
         thread_unblock (t);
-        
+
         if(need_yield()){
                 thread_yield();
         }
@@ -275,9 +279,12 @@ bool less_prio(const struct list_elem *cur, const struct list_elem *prev, void *
 
         }
 
+        /*
+
         else{
                 return (cur_thread->wake_up_time <= prev_thread->priority);
         }
+        */
 }
 
 
