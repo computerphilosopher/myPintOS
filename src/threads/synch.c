@@ -32,7 +32,7 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
-static bool need_donate(struct lock *lock);
+static bool need_donate(struct lock *lock, struct thread donater);
 static void donate_prio(struct lock *lock);
 
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
@@ -206,14 +206,14 @@ void lock_init (struct lock *lock)
    we need to sleep. */
 
 
-static bool need_donate(struct lock *lock)
+static bool need_donate(struct lock *lock, struct thread donater)
 {
 
         if(lock->holder)
         {
 
                 struct thread holder = *lock->holder;
-                if(holder.priority < thread_current()->priority)
+                if(holder.priority < donater.priority)
                 {
                         return true;
                 }
@@ -229,6 +229,7 @@ static bool need_donate(struct lock *lock)
         }
 
 }
+
 
 static void donate_prio(struct lock *lock)
 {
@@ -258,6 +259,7 @@ static void donate_prio(struct lock *lock)
 
 }
 
+
 static void return_prio(struct lock *lock){
 
         struct thread *t = lock->holder;
@@ -273,7 +275,7 @@ void lock_acquire (struct lock *lock)
         ASSERT (!intr_context ());
         ASSERT (!lock_held_by_current_thread (lock));
 
-        if(need_donate(lock)){
+        if(need_donate(lock, *(thread_current()))){
                 donate_prio(lock);
                 ASSERT(thread_current()->priority == lock->holder->priority);
         }
