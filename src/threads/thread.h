@@ -103,6 +103,8 @@ struct thread
     unsigned magic;                     /* Detects stack overflow. */
 
     int64_t wake_up_time;
+
+    int origin_prio;
   };
 
 /* If false (default), use round-robin scheduler.

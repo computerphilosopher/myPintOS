@@ -206,7 +206,7 @@ tid_t thread_create (const char *name, int priority,
         /* Initialize thread. */
         init_thread (t, name, priority);
         tid = t->tid = allocate_tid ();
-
+  
         /* Prepare thread for first run by initializing its stack.
            Do this atomically so intermediate values for the 'stack' 
            member cannot be observed. */
@@ -279,12 +279,6 @@ bool less_prio(const struct list_elem *cur, const struct list_elem *prev, void *
 
         }
 
-        /*
-
-        else{
-                return (cur_thread->wake_up_time <= prev_thread->priority);
-        }
-        */
 }
 
 
@@ -512,6 +506,7 @@ static void init_thread (struct thread *t, const char *name, int priority)
         strlcpy (t->name, name, sizeof t->name);
         t->stack = (uint8_t *) t + PGSIZE;
         t->priority = priority;
+        t->origin_prio = priority;
         t->magic = THREAD_MAGIC;
         list_push_back (&all_list, &t->allelem);
 }

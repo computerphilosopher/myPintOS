@@ -33,6 +33,7 @@
 #include "threads/thread.h"
 
 static bool need_donate(struct lock *lock);
+static void donate_prio(struct lock *lock);
 
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
@@ -107,11 +108,11 @@ bool sema_try_down (struct semaphore *sema)
    This function may be called from an interrupt handler. */
 void sema_up (struct semaphore *sema) 
 {
-        enum intr_level old_level;
+        //enum intr_level old_level;
 
         ASSERT (sema != NULL);
 
-        old_level = intr_disable ();
+        //old_level = intr_disable ();
 
         bool need_yield=false;
         
@@ -133,7 +134,7 @@ void sema_up (struct semaphore *sema)
                 thread_yield();
         }
         
-        intr_set_level (old_level);
+        //intr_set_level (old_level);
 }
 
 static void sema_test_helper (void *sema_);
@@ -191,7 +192,7 @@ void lock_init (struct lock *lock)
         ASSERT (lock != NULL);
 
         lock->holder = NULL;
-        lock->donated=false;
+        lock->donated= 0;
         sema_init (&lock->semaphore, 1);
 }
 
@@ -204,16 +205,15 @@ void lock_init (struct lock *lock)
    interrupts disabled, but interrupts will be turned back on if
    we need to sleep. */
 
+
 static bool need_donate(struct lock *lock)
 {
-        struct semaphore *sema = &lock->semaphore;
 
-        if(lock->holder!=NULL)
+        if(lock->holder)
         {
-                struct thread *waiter = list_entry(list_front(&sema->waiters), struct thread, elem);
 
-
-                if(waiter->priority > thread_get_priority())
+                struct thread holder = *lock->holder;
+                if(holder.priority < thread_current()->priority)
                 {
                         return true;
                 }
@@ -227,6 +227,44 @@ static bool need_donate(struct lock *lock)
         else{
                 return false;
         }
+
+}
+
+static void donate_prio(struct lock *lock)
+{
+
+        struct semaphore *sema = &lock->semaphore;
+
+        //struct thread *donater = list_entry(list_front(&sema->waiters), struct thread, elem);
+
+        struct thread *reciver= lock->holder;
+        struct thread *donater = thread_current();
+
+        if(!lock->donated){
+
+                //reciver->origin_prio = reciver->priority;
+
+                reciver->priority = donater->priority;
+
+                (lock->donated)++;
+        }
+
+        else{
+                reciver->priority = donater->priority;
+
+                (lock->donated)++;
+        }
+        ASSERT(thread_current()->priority == lock->holder->priority);
+
+}
+
+static void return_prio(struct lock *lock){
+
+        struct thread *t = lock->holder;
+        t->priority = t->origin_prio;
+
+        (lock->donated)--;
+
 }
 
 void lock_acquire (struct lock *lock)
@@ -235,9 +273,15 @@ void lock_acquire (struct lock *lock)
         ASSERT (!intr_context ());
         ASSERT (!lock_held_by_current_thread (lock));
 
+        if(need_donate(lock)){
+                donate_prio(lock);
+                ASSERT(thread_current()->priority == lock->holder->priority);
+        }
+
         sema_down (&lock->semaphore);
 
         lock->holder = thread_current ();
+
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -269,9 +313,14 @@ void lock_release (struct lock *lock)
         ASSERT (lock != NULL);
         ASSERT (lock_held_by_current_thread (lock));
 
+        if(lock->donated>0){
+                return_prio(lock);
+        }
+        
         lock->holder = NULL;
-
+        
         sema_up (&lock->semaphore);
+
 }
 
 /* Returns true if the current thread holds LOCK, false
