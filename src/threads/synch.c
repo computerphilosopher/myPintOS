@@ -33,7 +33,7 @@
 #include "threads/thread.h"
 
 static bool need_donate(struct lock *lock, struct thread donater);
-static void donate_prio(struct lock *lock);
+static void donate_prio(struct lock *lock, struct thread *donater, struct thread *taker);
 
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
@@ -231,27 +231,25 @@ static bool need_donate(struct lock *lock, struct thread donater)
 }
 
 
-static void donate_prio(struct lock *lock)
+static void donate_prio(struct lock *lock, struct thread *donater, struct thread *taker)
 {
 
         struct semaphore *sema = &lock->semaphore;
 
         //struct thread *donater = list_entry(list_front(&sema->waiters), struct thread, elem);
 
-        struct thread *reciver= lock->holder;
-        struct thread *donater = thread_current();
 
         if(!lock->donated){
 
                 //reciver->origin_prio = reciver->priority;
 
-                reciver->priority = donater->priority;
+                taker->priority = donater->priority;
 
                 (lock->donated)++;
         }
 
         else{
-                reciver->priority = donater->priority;
+                taker->priority = donater->priority;
 
                 (lock->donated)++;
         }
@@ -276,7 +274,7 @@ void lock_acquire (struct lock *lock)
         ASSERT (!lock_held_by_current_thread (lock));
 
         if(need_donate(lock, *(thread_current()))){
-                donate_prio(lock);
+                donate_prio(lock, thread_current(), lock->holder);
                 ASSERT(thread_current()->priority == lock->holder->priority);
         }
 
